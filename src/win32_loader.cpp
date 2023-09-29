@@ -56,7 +56,7 @@ namespace Audio
 	//Ingrained in the namespace
 	struct BufferHandle {
 		IDirectSoundBuffer* buffer;
-		uint32_t sample_count; 
+		uint32_t sample_rate; 
 		uint32_t bytes_per_sample;
 		uint32_t cursor;
 		uint32_t volume;
@@ -69,7 +69,7 @@ namespace Audio
 	typedef WAVEFORMATEX WaveFormat;
 	typedef std::function<float(float)> WaveFunc;
 
-	BufferHandle* Init(HWND& window, uint32_t sample_count, uint32_t channels, uint32_t bytes_per_channel, uint32_t volume)
+	BufferHandle* Init(HWND& window, uint32_t sample_rate, uint32_t channels, uint32_t bytes_per_channel, uint32_t volume)
 	{
 		HMODULE module_directsound = LoadLibraryA("dsound.dll");
 		if (module_directsound) {
@@ -84,8 +84,8 @@ namespace Audio
 				WaveFormat wave_format = {};
 				wave_format.wFormatTag = WAVE_FORMAT_PCM;
 				wave_format.nChannels = channels;
-				wave_format.nSamplesPerSec = sample_count;
-				wave_format.wBitsPerSample = 16;
+				wave_format.nSamplesPerSec = sample_rate;
+				wave_format.wBitsPerSample = bytes_per_channel * 8;
 				wave_format.nBlockAlign = (wave_format.nChannels * wave_format.wBitsPerSample) / 8;
 				wave_format.nAvgBytesPerSec = wave_format.nSamplesPerSec * wave_format.nBlockAlign;
 				wave_format.cbSize = 0;
@@ -101,7 +101,7 @@ namespace Audio
 
 					buffer_desc2.dwSize = sizeof(buffer_desc2);
 					buffer_desc2.dwFlags = 0;
-					buffer_desc2.dwBufferBytes = sample_count;
+					buffer_desc2.dwBufferBytes = sample_rate;
 					buffer_desc2.lpwfxFormat = &wave_format;
 
 
@@ -117,7 +117,7 @@ namespace Audio
 						OutputDebugStringA("Secondary buffer created");
 						BufferHandle* handle = new BufferHandle;
 						handle->buffer = secondary_buffer;
-						handle->sample_count = sample_count;
+						handle->sample_rate = sample_rate;
 						handle->bytes_per_sample = bytes_per_sample;
 						handle->cursor = 0;
 						handle->volume = volume;
@@ -145,9 +145,9 @@ namespace Audio
 			return;
 		}
 
-		uint32_t byte_to_lock = buffer_handle->cursor % buffer_handle->sample_count;
+		uint32_t byte_to_lock = buffer_handle->cursor % buffer_handle->sample_rate;
 		uint32_t size = (play_cur < byte_to_lock) ?
-			buffer_handle->sample_count - (byte_to_lock - play_cur) :
+			buffer_handle->sample_rate - (byte_to_lock - play_cur) :
 			play_cur - byte_to_lock;
 
 		void* audiobuf1, * audiobuf2;
@@ -259,9 +259,9 @@ namespace Audio
 				return;
 			}
 
-			uint32_t byte_to_lock = buffer_handle->cursor % buffer_handle->sample_count;
+			uint32_t byte_to_lock = buffer_handle->cursor % buffer_handle->sample_rate;
 			uint32_t size = (play_cur < byte_to_lock) ?
-				buffer_handle->sample_count - (byte_to_lock - play_cur) :
+				buffer_handle->sample_rate - (byte_to_lock - play_cur) :
 				play_cur - byte_to_lock;
 
 			void* audiobuf1, * audiobuf2;
