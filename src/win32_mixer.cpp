@@ -1,4 +1,4 @@
-#include "win32_loader.h"
+#include "win32_mixer.h"
 
 //Interface impl
 static bool application_running = true;
@@ -39,7 +39,9 @@ namespace Audio
 
 	Win32Mixer::~Win32Mixer()
 	{
-		Stop();
+		if(m_AsyncPlayRunning)
+			Stop();
+
 		if (m_BufferHandle.file_payload.data)
 			delete[] m_BufferHandle.file_payload.data;
 	}
@@ -203,7 +205,7 @@ namespace Audio
 					buffer_desc1.dwFlags = DSBCAPS_PRIMARYBUFFER;
 
 					buffer_desc2.dwSize = sizeof(buffer_desc2);
-					buffer_desc2.dwFlags = 0;
+					buffer_desc2.dwFlags = DSBCAPS_GLOBALFOCUS;
 					buffer_desc2.dwBufferBytes = sample_rate;
 					buffer_desc2.lpwfxFormat = &wave_format;
 
@@ -279,14 +281,14 @@ LRESULT CALLBACK WindowProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow) 
 {
-	const wchar_t CLASS_NAME[] = L"Sample Window Class";
+	const wchar_t class_name[] = L"Sample Window Class";
 
 	WNDCLASS wc = { };
 
 	wc.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
 	wc.lpfnWndProc = WindowProc;
 	wc.hInstance = hInstance;
-	wc.lpszClassName = CLASS_NAME;
+	wc.lpszClassName = class_name;
 
 	if (!RegisterClass(&wc)) {
 		return 0;
@@ -294,7 +296,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 
 	HWND hwnd = CreateWindowEx(
 		0,
-		CLASS_NAME,
+		class_name,
 		L"Learn to Program Windows",
 		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
@@ -305,14 +307,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 	);
 
 	if (hwnd) {
-		ShowWindow(hwnd, nCmdShow);
+		ShowWindow(hwnd, SW_HIDE);
 
 		uint32_t sample_size = 48'000, channels = 2, bytes_per_channel = 2, volume = 1000;
 		uint32_t bytes_per_sample = channels * bytes_per_channel;
 
 		float output_hz = 432.f;
 
-		std::unique_ptr<Audio::Mixer> buffer_handle = Audio::GenerateLoader(hwnd, CPATH("assets/sound_samples/ballin.wav"), 1000);
+		std::unique_ptr<Audio::Mixer> buffer_handle = Audio::GenerateMixer(hwnd, CPATH("assets/sound_samples/ballin.wav"), 1000);
 		if (buffer_handle == nullptr) {
 			OutputDebugStringA("Audio could not be initialized");
 			return -1;
@@ -322,7 +324,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 		MSG msg;
 		BOOL bRet;
 		while (application_running) {
-			if ((bRet = PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) != 0)
+			if ((bRet = GetMessage(&msg, hwnd, 0, 0)) != 0)
 			{
 				if (bRet == -1)
 				{

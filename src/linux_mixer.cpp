@@ -1,4 +1,4 @@
-#include "linux_loader.h"
+#include "linux_mixer.h"
 
 void Audio::LinuxMixer::UpdateRawWave(const WaveFunc& func)
 {

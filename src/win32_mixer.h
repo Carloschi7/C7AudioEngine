@@ -8,37 +8,26 @@
 #include <string>
 #include <thread>
 #include <atomic>
-#include "loader.h"
+#include "mixer.h"
 
 namespace Audio
 {
-	struct Win32BufferHandle {
+	struct Win32FilePayload 
+	{
+		uint8_t* data = nullptr;
+		uint32_t size = 0;
+	};
+
+	struct Win32BufferHandle
+	{
 		IDirectSoundBuffer* buffer;
 		uint32_t sample_rate;
 		uint32_t bytes_per_sample;
 		uint32_t cursor;
 		uint32_t volume;
+		Win32FilePayload file_payload;
+	};
 
-		struct {
-			uint8_t* data = nullptr;
-			uint32_t size = 0;
-		} file_payload;
-	};
-	struct WavHeader {
-		uint8_t riff_str[4];
-		uint32_t file_size;
-		uint8_t wave_str[4];
-		uint8_t fmt_str[4];
-		uint32_t format_data;
-		uint16_t format_type;
-		uint16_t channels;
-		uint32_t sample_rate;
-		uint32_t byte_rate;
-		uint16_t unused;
-		uint16_t bits_per_sample;
-		uint8_t data_str[4];
-		uint32_t data_size;
-	};
 
 	typedef HRESULT WINAPI direct_sound_create(_In_opt_ LPCGUID pcGuidDevice, _Outptr_ LPDIRECTSOUND* ppDS, _Pre_null_ LPUNKNOWN pUnkOuter);
 	typedef HRESULT WINAPI direct_sound_enumerate(_In_ LPDSENUMCALLBACKA pDSEnumCallback, _In_opt_ LPVOID pContext);
