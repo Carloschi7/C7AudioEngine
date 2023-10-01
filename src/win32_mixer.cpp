@@ -66,6 +66,8 @@ namespace Audio
 			return;
 		}
 		
+		//More of a process than an actual window, that is needed though to init directsound, so hiding
+		//it in the background
 		ShowWindow(m_Window, SW_HIDE);
 	}
 
