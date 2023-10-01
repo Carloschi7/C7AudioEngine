@@ -14,6 +14,7 @@ namespace Audio
 		NONE = 0,
 		RAW_WAVE_STREAM,
 		FILE_WAV_STREAM,
+		FILE_MP3_STREAM,
 	};
 
 	//Header of supported formats
@@ -65,6 +66,7 @@ namespace Audio
 	};
 
 	std::unique_ptr<Mixer> GenerateMixer();
+	WavHeader ReadWavHeader(FILE* fp);
 
 	template<typename type, uint32_t channels>
 	void WriteWave(const WaveFunc& func, void* buffer, uint32_t size, uint32_t bytes_per_sample, uint32_t volume, uint32_t& generator)

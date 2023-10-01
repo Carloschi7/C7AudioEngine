@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 
 project(C7AudioEngine)
-set(C7_AUDIO_ENGINE_SOURCE 	
+set(C7_AUDIO_ENGINE_SOURCE
 				src/setup.h
 				src/win32_mixer.cpp
 				src/win32_mixer.h
@@ -11,7 +11,7 @@ set(C7_AUDIO_ENGINE_SOURCE
 				src/mixer.h)
 
 if(MSVC)
-    add_executable(${PROJECT_NAME} WIN32 ${C7_AUDIO_ENGINE_SOURCE})
+    add_library(${PROJECT_NAME} STATIC ${C7_AUDIO_ENGINE_SOURCE})
     target_compile_definitions(${PROJECT_NAME} PUBLIC UNICODE)
 else()
 	#TODO linux

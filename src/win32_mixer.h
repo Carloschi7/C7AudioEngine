@@ -48,8 +48,6 @@ namespace Audio
 		virtual void Wait() override;
 		virtual void AsyncPlay() override;
 		virtual void Stop() override;
-	private:
-		void ParseHeader(WavHeader& header, FILE* fp);
 
 	private:
 		Win32BufferHandle* m_BufferHandle;

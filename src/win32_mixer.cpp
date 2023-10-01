@@ -77,10 +77,12 @@ namespace Audio
 		if(m_AsyncPlayRunning)
 			Stop();
 
-		if (m_BufferHandle->file_payload.data)
-			delete[] m_BufferHandle->file_payload.data;
+		if (m_BufferHandle) {
+			if (m_BufferHandle->file_payload.data)
+				delete[] m_BufferHandle->file_payload.data;
 
-		delete m_BufferHandle;
+			delete m_BufferHandle;
+		}
 
 		//Windows API
 		DestroyWindow(m_Window);
@@ -107,9 +109,7 @@ namespace Audio
 	{
 		if (m_MixerMode != MixerMode::NONE)
 			return;
-
-		m_MixerMode = MixerMode::FILE_WAV_STREAM;
-
+		
 		FILE* fp;
 		if (fopen_s(&fp, filename.c_str(), "rb") != 0)
 		{
@@ -117,23 +117,33 @@ namespace Audio
 			return;
 		}
 
-		//According to the standard WAV file composition
-		WavHeader header;
-		fread(&header, sizeof(WavHeader), 1, fp);
-		ParseHeader(header, fp);
-		m_BufferHandle = InitDirectsound(m_Window, header.sample_rate, header.channels, header.bits_per_sample / 8, 1000);
-		if (!m_BufferHandle) {
-			//TODO handle properly
-			OutputDebugStringA("Windows mixer not initialized");
-			return;
-		}
+		std::string extension = filename.substr(filename.find_last_of('.'));
+		if (extension == ".wav") {
+			m_MixerMode = MixerMode::FILE_WAV_STREAM;
 
-		//Load file payload into mem
-		uint32_t& file_size = m_BufferHandle->file_payload.size;
-		file_size = header.data_size;
-		m_BufferHandle->file_payload.data = new uint8_t[file_size];
-		fread(m_BufferHandle->file_payload.data, 1, file_size, fp);
-		fclose(fp);
+			//According to the standard WAV file composition
+			WavHeader header = ReadWavHeader(fp);
+			m_BufferHandle = InitDirectsound(m_Window, header.sample_rate, header.channels, header.bits_per_sample / 8, 1000);
+			if (!m_BufferHandle) {
+				//TODO handle properly
+				OutputDebugStringA("Windows mixer not initialized");
+				return;
+			}
+
+			//Load file payload into mem
+			uint32_t& file_size = m_BufferHandle->file_payload.size;
+			file_size = header.data_size;
+			m_BufferHandle->file_payload.data = new uint8_t[file_size];
+			fread(m_BufferHandle->file_payload.data, 1, file_size, fp);
+			fclose(fp);
+		}
+		else if (extension == ".mp3") {
+			m_MixerMode = MixerMode::FILE_MP3_STREAM;
+			//TODO implement
+		}
+		else {
+			OutputDebugStringA("Format not supported");
+		}
 	}
 
 	void Win32Mixer::UpdateCustomWave(const WaveFunc& func)
@@ -271,21 +281,6 @@ namespace Audio
 		m_BufferHandle->buffer->Stop();
 	}
 
-	void Win32Mixer::ParseHeader(WavHeader& header, FILE* fp)
-	{
-		if (std::strncmp(reinterpret_cast<const char*>(header.data_str), "data", 4) == 0)
-			return;
-
-		//First tag offset + size
-		uint32_t offset = 36 + 4 + 4;
-		while (std::strncmp(reinterpret_cast<const char*>(header.data_str), "data", 4) != 0) {
-			offset += header.data_size;
-			fseek(fp, offset, SEEK_SET);
-			fread(&header.data_str, 1, 4, fp);
-			fread(&header.data_size, 4, 1, fp);
-		}
-	}
-
 	static Win32BufferHandle* InitDirectsound(HWND& window, uint32_t sample_rate, uint32_t channels, uint32_t bytes_per_channel, uint32_t volume)
 	{
 		HMODULE module_directsound = LoadLibraryA("dsound.dll");
@@ -352,27 +347,3 @@ namespace Audio
 	}
 }
 
-#if 1
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow) 
-#else
-static int TestFunc()
-#endif
-{
-	std::unique_ptr<Audio::Mixer> buffer_handle = Audio::GenerateMixer();
-	if (buffer_handle == nullptr) {
-		OutputDebugStringA("Audio could not be initialized");
-		return -1;
-	}
-
-	Audio::WaveFunc func = [](float x) {
-		float hz = 440.f, sample_rate = 44100.f, bytes_per_sample = 4.f;
-		return sin(x * (hz / sample_rate * bytes_per_sample * 0.5f) * pi);
-	};
-
-	//buffer_handle->PushAudioFile(PATH("assets/sound_samples/ballin.wav"));
-	buffer_handle->PushCustomWave(func, 44100, 2, 2, 3000);
-	buffer_handle->AsyncPlay();
-	buffer_handle->Wait();
-
-	return 0;
-}
