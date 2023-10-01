@@ -3,6 +3,7 @@
 #include <functional>
 #include <thread>
 #include <atomic>
+#include <string>
 
 namespace Audio 
 {
@@ -10,7 +11,8 @@ namespace Audio
 	using WaveFunc = std::function<float(float)>;
 	enum class MixerMode : uint8_t
 	{
-		RAW_WAVE_STREAM = 0,
+		NONE = 0,
+		RAW_WAVE_STREAM,
 		FILE_WAV_STREAM,
 	};
 
@@ -34,14 +36,18 @@ namespace Audio
 	class Mixer
 	{
 	public:
-		Mixer(MixerMode mode);
-		virtual ~Mixer() {};
-		virtual void UpdateRawWave(const WaveFunc& func) = 0;
+		Mixer();
+		virtual ~Mixer();
+		virtual void PushCustomWave(const WaveFunc& func, uint32_t sample_rate, uint32_t channels, uint32_t bytes_per_channel, uint32_t volume) = 0;
+		virtual void PushAudioFile(const std::string& filename) = 0;
+		virtual void UpdateCustomWave(const WaveFunc& func) = 0;
 		virtual void UpdateFileWav() = 0;
+
+		virtual void Wait() = 0;
 		virtual void AsyncPlay() = 0;
 		virtual void Stop() = 0;
 	protected:
-		MixerMode m_LoaderMode;
+		MixerMode m_MixerMode;
 		std::atomic<bool> m_AsyncPlayRunning = false;
 		std::thread m_AsyncPlayThread;
 	};
@@ -49,24 +55,14 @@ namespace Audio
 	class NullMixer : public Mixer
 	{
 	public:
-		virtual void UpdateRawWave(const WaveFunc& func) override {};
-		virtual void UpdateFileWav() override {};
-		virtual void AsyncPlay() override {};
-		virtual void Stop() override {};
+		virtual void PushCustomWave(const WaveFunc& func, uint32_t sample_rate, uint32_t channels, uint32_t bytes_per_channel, uint32_t volume) override {}
+		virtual void PushAudioFile(const std::string& filename) override {}
+		virtual void UpdateCustomWave(const WaveFunc& func) override {}
+		virtual void UpdateFileWav() override {}
+		virtual void Wait() override {}
+		virtual void AsyncPlay() override {}
+		virtual void Stop() override {}
 	};
 
-	template<class... Args>
-	std::unique_ptr<Mixer> GenerateMixer(Args&&... init_args)
-	{
-		//TODO make this work also for other win distributions
-#ifdef _MSC_VER
-		return std::make_unique<Win32Mixer>(std::forward<Args>(init_args)...);
-#elif defined __linux__ || defined UNIX
-		return std::make_unique<LinuxMixer>(std::forward<Args>(init_args)...);
-#else
-		return std::make_unique<NullMixer>();
-#endif
-		//UNREACHABLE
-		return nullptr;
-	}
+	std::unique_ptr<Mixer> GenerateMixer();
 }

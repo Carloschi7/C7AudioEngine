@@ -1,17 +1,34 @@
 #include "linux_mixer.h"
+#include "win32_mixer.h"
 
-void Audio::LinuxMixer::UpdateRawWave(const WaveFunc& func)
-{
-}
+namespace Audio {
 
-void Audio::LinuxMixer::UpdateFileWav()
-{
-}
+	void LinuxMixer::PushCustomWave(const WaveFunc& func, uint32_t sample_rate, uint32_t channels, uint32_t bytes_per_channel, uint32_t volume)
+	{
+	}
 
-void Audio::LinuxMixer::AsyncPlay()
-{
-}
+	void LinuxMixer::PushAudioFile(const std::string& filename)
+	{
+	}
 
-void Audio::LinuxMixer::Stop()
-{
+	void LinuxMixer::UpdateCustomWave(const WaveFunc& func)
+	{
+	}
+
+	void LinuxMixer::UpdateFileWav()
+	{
+	}
+
+	void LinuxMixer::Wait()
+	{
+	}
+
+	void LinuxMixer::AsyncPlay()
+	{
+	}
+
+	void LinuxMixer::Stop()
+	{
+	}
+
 }
