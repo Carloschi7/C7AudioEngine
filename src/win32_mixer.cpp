@@ -1,4 +1,5 @@
 #include "win32_mixer.h"
+#include "setup.h"
 
 //Interface impl
 static bool application_running = true;
@@ -156,26 +157,15 @@ namespace Audio
 
 		sound_buffer->Lock(byte_to_lock, size, &audiobuf1, &size1, &audiobuf2, &size2, 0);
 		if (size1 != 0 || size2 != 0) {
-			//Play sound
-			int16_t* castedbuf1 = static_cast<int16_t*>(audiobuf1);
-			int16_t* castedbuf2 = static_cast<int16_t*>(audiobuf2);
-
-			//Tone settings
-			uint32_t sample_size1 = size1 / m_BufferHandle->bytes_per_sample;
-			uint32_t sample_size2 = size2 / m_BufferHandle->bytes_per_sample;
-
-			for (uint32_t i = 0; i < sample_size1; i++) {
-				float fval = func((float)generator++);
-				int16_t val = int16_t(fval * (float)m_BufferHandle->volume);
-				*castedbuf1++ = val;
-				*castedbuf1++ = val;
+			uint32_t volume = m_BufferHandle->volume;
+			uint32_t bytes_per_sample = m_BufferHandle->bytes_per_sample;
+			if (m_BufferHandle->channels == 2) {
+				WriteWave<int16_t, 2>(m_BufferHandle->wavefunc, audiobuf1, size1, bytes_per_sample, volume, generator);
+				WriteWave<int16_t, 2>(m_BufferHandle->wavefunc, audiobuf2, size2, bytes_per_sample, volume, generator);
 			}
-
-			for (uint32_t i = 0; i < sample_size2; i++) {
-				float fval = func((float)generator++);
-				int16_t val = int16_t(fval * (float)m_BufferHandle->volume);
-				*castedbuf2++ = val;
-				*castedbuf2++ = val;
+			else {
+				WriteWave<int16_t, 1>(m_BufferHandle->wavefunc, audiobuf1, size1, bytes_per_sample, volume, generator);
+				WriteWave<int16_t, 1>(m_BufferHandle->wavefunc, audiobuf2, size2, bytes_per_sample, volume, generator);
 			}
 
 			m_BufferHandle->cursor += (size1 + size2);
@@ -264,8 +254,10 @@ namespace Audio
 				{
 				case MixerMode::RAW_WAVE_STREAM:
 					UpdateCustomWave(m_BufferHandle->wavefunc);
+					break;
 				case MixerMode::FILE_WAV_STREAM:
 					UpdateFileWav();
+					break;
 				}
 			}
 		});
@@ -342,6 +334,7 @@ namespace Audio
 						Win32BufferHandle* buffer_handle = new Win32BufferHandle;
 						buffer_handle->buffer = secondary_buffer;
 						buffer_handle->sample_rate = sample_rate;
+						buffer_handle->channels = channels;
 						buffer_handle->bytes_per_sample = bytes_per_sample;
 						buffer_handle->cursor = 0;
 						buffer_handle->volume = volume;
@@ -359,10 +352,11 @@ namespace Audio
 	}
 }
 
-#define PATH(path) std::string(ROOT_DIR) + '/' + std::string(path)
-#define CPATH(path) (std::string(ROOT_DIR) + '/' + std::string(path)).c_str()
-
+#if 1
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow) 
+#else
+static int TestFunc()
+#endif
 {
 	std::unique_ptr<Audio::Mixer> buffer_handle = Audio::GenerateMixer();
 	if (buffer_handle == nullptr) {
@@ -370,7 +364,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 		return -1;
 	}
 
-	buffer_handle->PushAudioFile(PATH("assets/sound_samples/ballin.wav"));
+	Audio::WaveFunc func = [](float x) {
+		float hz = 440.f, sample_rate = 44100.f, bytes_per_sample = 4.f;
+		return sin(x * (hz / sample_rate * bytes_per_sample * 0.5f) * pi);
+	};
+
+	//buffer_handle->PushAudioFile(PATH("assets/sound_samples/ballin.wav"));
+	buffer_handle->PushCustomWave(func, 44100, 2, 2, 3000);
 	buffer_handle->AsyncPlay();
 	buffer_handle->Wait();
 

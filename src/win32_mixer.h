@@ -22,6 +22,7 @@ namespace Audio
 	{
 		IDirectSoundBuffer* buffer;
 		uint32_t sample_rate;
+		uint32_t channels;
 		uint32_t bytes_per_sample;
 		uint32_t cursor;
 		uint32_t volume;

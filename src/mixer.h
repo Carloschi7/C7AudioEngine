@@ -65,4 +65,20 @@ namespace Audio
 	};
 
 	std::unique_ptr<Mixer> GenerateMixer();
+
+	template<typename type, uint32_t channels>
+	void WriteWave(const WaveFunc& func, void* buffer, uint32_t size, uint32_t bytes_per_sample, uint32_t volume, uint32_t& generator)
+	{
+		type* castedbuf = static_cast<type*>(buffer);
+		//Tone settings
+		uint32_t sample_size = size / bytes_per_sample;
+
+		for (uint32_t i = 0; i < sample_size; i++) {
+			float fval = func((float)generator++);
+			int16_t val = int16_t(fval * (float)volume);
+
+			for (uint32_t j = 0; j < channels; j++)
+				*castedbuf++ = val;
+		}
+	}
 }
