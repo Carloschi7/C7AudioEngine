@@ -27,6 +27,8 @@ namespace Audio
 		return nullptr;
 	}
 
+
+
 	WavHeader ReadWavHeader(FILE* fp)
 	{
 		WavHeader header;
@@ -40,6 +42,34 @@ namespace Audio
 			fread(&header.data_str, 1, 4, fp);
 			fread(&header.data_size, 4, 1, fp);
 		}
+
+		return header;
+	}
+
+	Mp3Header ReadMp3Header(FILE* fp)
+	{
+		Mp3Header header;
+		//Skipping tags v1 and v2 atm
+		char tag_mark[4] = {};
+		fread(tag_mark, 1, 3, fp);
+		uint32_t file_cursor = 0;
+		while (std::strcmp(tag_mark, "TAG") == 0 || std::strcmp(tag_mark, "ID3") == 0) {
+			if (std::strcmp(tag_mark, "TAG") == 0) {
+				file_cursor += 128;
+			}
+			else {
+				fseek(fp, file_cursor + 0x6, SEEK_SET);
+				uint32_t to_jump;
+				fread(&to_jump, 4, 1, fp);
+				SwapBytes(to_jump);
+				file_cursor += 0xA + to_jump;
+			}
+			fseek(fp, file_cursor, SEEK_SET);
+			fread(tag_mark, 1, 3, fp);
+		}
+		fseek(fp, file_cursor, SEEK_SET);
+		fread(&header, sizeof(Mp3Header), 1, fp);
+		SwapBytes(header.hex);
 
 		return header;
 	}

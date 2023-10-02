@@ -18,7 +18,8 @@ namespace Audio
 	};
 
 	//Header of supported formats
-	struct WavHeader {
+	struct WavHeader 
+	{
 		uint8_t riff_str[4];
 		uint32_t file_size;
 		uint8_t wave_str[4];
@@ -32,6 +33,26 @@ namespace Audio
 		uint16_t bits_per_sample;
 		uint8_t data_str[4];
 		uint32_t data_size;
+	};
+
+	union Mp3Header 
+	{
+		struct {
+			uint32_t emphasis : 2;
+			uint32_t original : 1;
+			uint32_t copyright : 1;
+			uint32_t mode_extension : 2;
+			uint32_t channel_type : 2;
+			uint32_t private_bit : 1;
+			uint32_t padding : 1;
+			uint32_t freq_index : 2;
+			uint32_t bitrate_index : 4;
+			uint32_t crc_protection : 1;
+			uint32_t layer : 2;
+			uint32_t mpeg_ver_id : 2;
+			uint32_t frame_synchronizer : 11;
+		};
+		uint32_t hex;
 	};
 
 	class Mixer
@@ -66,7 +87,23 @@ namespace Audio
 	};
 
 	std::unique_ptr<Mixer> GenerateMixer();
+
 	WavHeader ReadWavHeader(FILE* fp);
+	Mp3Header ReadMp3Header(FILE* fp);
+
+	template<typename type, std::enable_if_t<std::is_integral_v<type>, int> = 0>
+	void SwapBytes(type& value)
+	{
+		uint8_t payload[sizeof(type)];
+		std::memcpy(payload, &value, sizeof(type));
+
+		value = 0;
+		uint32_t type_bits = sizeof(type) * 8;
+		for (uint32_t i = 0; i < sizeof(type); i++) {
+			type_bits -= 8;
+			value |= static_cast<type>(payload[i]) << type_bits;
+		}
+	}
 
 	template<typename type, uint32_t channels>
 	void WriteWave(const WaveFunc& func, void* buffer, uint32_t size, uint32_t bytes_per_sample, uint32_t volume, uint32_t& generator)
