@@ -4,6 +4,7 @@
 #include <thread>
 #include <atomic>
 #include <string>
+#include <vector>
 
 namespace Audio 
 {
@@ -55,6 +56,27 @@ namespace Audio
 		uint32_t hex;
 	};
 
+	struct Mp3Section
+	{
+		uint8_t* ptr;
+		uint32_t size;
+	};
+
+	struct Mp3Frame
+	{
+		Mp3Header header;
+		uint16_t crc_data;
+		Mp3Section channel_info;
+		Mp3Section sound_data;
+	};
+
+	//no v1/v2 tags stored at the moment
+	struct Mp3Metadata
+	{
+		std::unique_ptr<uint8_t[]> filebuf;
+		std::vector<Mp3Frame> frames;
+	};
+
 	class Mixer
 	{
 	public:
@@ -88,8 +110,12 @@ namespace Audio
 
 	std::unique_ptr<Mixer> GenerateMixer();
 
+	//WAV functions
 	WavHeader ReadWavHeader(FILE* fp);
+	//MP3 functions
 	Mp3Header ReadMp3Header(FILE* fp);
+	uint32_t ComputeMp3FrameLength(Mp3Header header);
+	Mp3Metadata Mp3Load(const std::string& str);
 
 	template<typename type, std::enable_if_t<std::is_integral_v<type>, int> = 0>
 	void SwapBytes(type& value)
