@@ -16,7 +16,7 @@ namespace Audio {
 	{
 	}
 
-	void LinuxMixer::UpdateFileWav()
+	void LinuxMixer::UpdateFile()
 	{
 	}
 

@@ -1,5 +1,7 @@
 #include "win32_mixer.h"
 #include "setup.h"
+#include "wav.h"
+#include "mp3.h"
 
 //Interface impl
 static bool application_running = true;
@@ -12,7 +14,6 @@ namespace Audio
 		LRESULT result = 0;
 		switch (msg) {
 		case WM_SIZE: {
-			//WM_SIZE TODO
 		} break;
 		case WM_CLOSE: {
 			application_running = false;
@@ -77,12 +78,8 @@ namespace Audio
 		if(m_AsyncPlayRunning)
 			Stop();
 
-		if (m_BufferHandle) {
-			if (m_BufferHandle->file_payload.data)
-				delete[] m_BufferHandle->file_payload.data;
-
+		if (m_BufferHandle) 
 			delete m_BufferHandle;
-		}
 
 		//Windows API
 		DestroyWindow(m_Window);
@@ -98,7 +95,7 @@ namespace Audio
 		m_BufferHandle = InitDirectsound(m_Window, sample_rate, channels, bytes_per_channel, volume);
 		if (!m_BufferHandle) {
 			//TODO handle properly
-			OutputDebugStringA("Windows mixer not initialized");
+			LOG_ERROR("Windows mixer not initialized");
 			return;
 		}
 
@@ -122,27 +119,42 @@ namespace Audio
 			m_MixerMode = MixerMode::FILE_WAV_STREAM;
 
 			//According to the standard WAV file composition
-			WavHeader header = ReadWavHeader(fp);
+			WAV::Header header = WAV::ReadHeader(fp);
 			m_BufferHandle = InitDirectsound(m_Window, header.sample_rate, header.channels, header.bits_per_sample / 8, 1000);
 			if (!m_BufferHandle) {
 				//TODO handle properly
-				OutputDebugStringA("Windows mixer not initialized");
+				LOG_ERROR("Windows mixer not initialized");
 				return;
 			}
 
 			//Load file payload into mem
 			uint32_t& file_size = m_BufferHandle->file_payload.size;
 			file_size = header.data_size;
-			m_BufferHandle->file_payload.data = new uint8_t[file_size];
-			fread(m_BufferHandle->file_payload.data, 1, file_size, fp);
+			m_BufferHandle->file_payload.data = std::make_unique<uint8_t[]>(file_size);
+			fread(m_BufferHandle->file_payload.data.get(), 1, file_size, fp);
 			fclose(fp);
 		}
 		else if (extension == ".mp3") {
 			m_MixerMode = MixerMode::FILE_MP3_STREAM;
 			//TODO implement
+			MP3::Metadata data = MP3::Load(filename);
+			uint32_t sample_rate, channels, bits_per_sample;
+			MP3::ExtractDirectsoundData(data.first_header, sample_rate, channels, bits_per_sample);
+			m_BufferHandle = InitDirectsound(m_Window, sample_rate, channels, bits_per_sample / 8, 1000);
+			if (!m_BufferHandle) {
+				//TODO handle properly
+				LOG_ERROR("Windows mixer not initialized");
+				return;
+			}
+
+			std::unique_ptr<int16_t[]> output = std::make_unique<int16_t[]>(data.max_pcm_samples);
+			MP3::Decode(data, output.get(), data.max_pcm_samples);
+			//Bind it as an uint8_t ptr to the buffer handle
+			m_BufferHandle->file_payload.data.swap(std::unique_ptr<uint8_t[]>{ reinterpret_cast<uint8_t*>(output.release()) });
+			m_BufferHandle->file_payload.size = data.max_pcm_samples * sizeof(int16_t);
 		}
 		else {
-			OutputDebugStringA("Format not supported");
+			LOG_ERROR("Format not supported");
 		}
 	}
 
@@ -183,7 +195,7 @@ namespace Audio
 		sound_buffer->Unlock(audiobuf1, size1, audiobuf2, size2);
 	}
 
-	void Win32Mixer::UpdateFileWav()
+	void Win32Mixer::UpdateFile()
 	{
 		IDirectSoundBuffer* sound_buffer = m_BufferHandle->buffer;
 		uint32_t generator = m_BufferHandle->cursor / m_BufferHandle->bytes_per_sample;
@@ -203,7 +215,7 @@ namespace Audio
 		DWORD size1, size2;
 
 		sound_buffer->Lock(byte_to_lock, size, &audiobuf1, &size1, &audiobuf2, &size2, 0);
-		uint8_t* filebuf = m_BufferHandle->file_payload.data;
+		uint8_t* filebuf = m_BufferHandle->file_payload.data.get();
 		if (size1 != 0 || size2 != 0) {
 			uint8_t* casted_buf1 = static_cast<uint8_t*>(audiobuf1);
 			uint8_t* casted_buf2 = static_cast<uint8_t*>(audiobuf2);
@@ -265,8 +277,8 @@ namespace Audio
 				case MixerMode::RAW_WAVE_STREAM:
 					UpdateCustomWave(m_BufferHandle->wavefunc);
 					break;
-				case MixerMode::FILE_WAV_STREAM:
-					UpdateFileWav();
+				default:
+					UpdateFile();
 					break;
 				}
 			}
@@ -319,13 +331,13 @@ namespace Audio
 					IDirectSoundBuffer* primary_buffer;
 					if (direct_sound->CreateSoundBuffer(&buffer_desc1, &primary_buffer, nullptr) >= 0) {
 						if (primary_buffer->SetFormat(&wave_format) >= 0) {
-							OutputDebugStringA("Primary buffer created\n");
+							LOG_INFO("Primary buffer created\n");
 						}
 					}
 
 					IDirectSoundBuffer* secondary_buffer;
 					if (direct_sound->CreateSoundBuffer(&buffer_desc2, &secondary_buffer, nullptr) >= 0) {
-						OutputDebugStringA("Secondary buffer created\n");
+						LOG_INFO("Secondary buffer created\n");
 						Win32BufferHandle* buffer_handle = new Win32BufferHandle;
 						buffer_handle->buffer = secondary_buffer;
 						buffer_handle->sample_rate = sample_rate;
