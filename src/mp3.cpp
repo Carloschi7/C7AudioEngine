@@ -137,7 +137,7 @@ namespace Audio
 			for (auto& frame : data.frames) {
 
 				if (cursor >= size) {
-					LOG_ERROR("Going over the buf boundaries");
+					//LOG_ERROR("Going over the buf boundaries");
 					return;
 				}
 

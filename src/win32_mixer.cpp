@@ -92,7 +92,7 @@ namespace Audio
 
 		m_MixerMode = MixerMode::RAW_WAVE_STREAM;
 		//Simple init
-		m_BufferHandle = InitDirectsound(m_Window, sample_rate, channels, bytes_per_channel, volume);
+		m_BufferHandle = Audio::InitDirectsound(m_Window, sample_rate, channels, bytes_per_channel, volume);
 		if (!m_BufferHandle) {
 			//TODO handle properly
 			LOG_ERROR("Windows mixer not initialized");
@@ -120,7 +120,7 @@ namespace Audio
 
 			//According to the standard WAV file composition
 			WAV::Header header = WAV::ReadHeader(fp);
-			m_BufferHandle = InitDirectsound(m_Window, header.sample_rate, header.channels, header.bits_per_sample / 8, 1000);
+			m_BufferHandle = Audio::InitDirectsound(m_Window, header.sample_rate, header.channels, header.bits_per_sample / 8, 1000);
 			if (!m_BufferHandle) {
 				//TODO handle properly
 				LOG_ERROR("Windows mixer not initialized");
@@ -128,11 +128,22 @@ namespace Audio
 			}
 
 			//Load file payload into mem
-			uint32_t& file_size = m_BufferHandle->file_payload.size;
-			file_size = header.data_size;
-			m_BufferHandle->file_payload.data = std::make_unique<uint8_t[]>(file_size);
-			fread(m_BufferHandle->file_payload.data.get(), 1, file_size, fp);
-			fclose(fp);
+			Win32FilePayload& payload = m_BufferHandle->file_payload;
+			payload = {};
+			payload.file_size = header.data_size;
+			if (payload.file_size < g_MaxFilePortion * 2 + sizeof(WAV::Header)) {
+				//If the file is small enough, put everything in the back buffer
+				payload.loaded_chunk.resize(payload.file_size);
+				fread(payload.loaded_chunk.data(), 1, payload.file_size, fp);
+			}
+			else {
+				payload.loaded_chunk.resize(g_MaxFilePortion * 2);
+				fread(payload.loaded_chunk.data(), 1, g_MaxFilePortion * 2, fp);
+				payload.chunk_position = 0;
+				payload.swap_index = 0;
+			}
+
+			payload.fp = fp;
 		}
 		else if (extension == ".mp3") {
 			m_MixerMode = MixerMode::FILE_MP3_STREAM;
@@ -140,18 +151,45 @@ namespace Audio
 			MP3::Metadata data = MP3::Load(filename);
 			uint32_t sample_rate, channels, bits_per_sample;
 			MP3::ExtractDirectsoundData(data.first_header, sample_rate, channels, bits_per_sample);
-			m_BufferHandle = InitDirectsound(m_Window, sample_rate, channels, bits_per_sample / 8, 1000);
+			m_BufferHandle = Audio::InitDirectsound(m_Window, sample_rate, channels, bits_per_sample / 8, 1000);
 			if (!m_BufferHandle) {
 				//TODO handle properly
 				LOG_ERROR("Windows mixer not initialized");
 				return;
 			}
 
-			std::unique_ptr<int16_t[]> output = std::make_unique<int16_t[]>(data.max_pcm_samples);
-			MP3::Decode(data, output.get(), data.max_pcm_samples);
-			//Bind it as an uint8_t ptr to the buffer handle
-			m_BufferHandle->file_payload.data.swap(std::unique_ptr<uint8_t[]>{ reinterpret_cast<uint8_t*>(output.release()) });
-			m_BufferHandle->file_payload.size = data.max_pcm_samples * sizeof(int16_t);
+			Win32FilePayload& payload = m_BufferHandle->file_payload;
+			std::string decoded_filename = filename + ".decoded";
+			{
+				std::unique_ptr<int16_t[]> output = std::make_unique<int16_t[]>(data.max_pcm_samples);
+				MP3::Decode(data, output.get(), data.max_pcm_samples);
+
+				//Save the decoded data in a new file
+				if (fopen_s(&payload.fp, decoded_filename.c_str(), "rb") == 0) {
+					fclose(payload.fp);
+					remove(decoded_filename.c_str());
+				}
+
+				if (fopen_s(&payload.fp, decoded_filename.c_str(), "wb") != 0) {
+					LOG_ERROR("could not create file");
+					return;
+				}
+				fwrite(output.get(), sizeof(int16_t), data.max_pcm_samples, payload.fp); 
+			}
+			//Reopen it in read mode
+			fclose(payload.fp);
+			if (fopen_s(&payload.fp, decoded_filename.c_str(), "rb") != 0) {
+				LOG_ERROR("could not open file");
+				return;
+			}
+
+
+			//Allocate size for double of the decoded frames
+			payload.loaded_chunk.resize(g_MaxFilePortion * 2);
+			fread(payload.loaded_chunk.data(), 1, g_MaxFilePortion * 2, payload.fp);
+			payload.file_size = data.max_pcm_samples * sizeof(int16_t);
+			payload.chunk_position = 0;
+			payload.swap_index = 0;
 		}
 		else {
 			LOG_ERROR("Format not supported");
@@ -198,7 +236,6 @@ namespace Audio
 	void Win32Mixer::UpdateFile()
 	{
 		IDirectSoundBuffer* sound_buffer = m_BufferHandle->buffer;
-		uint32_t generator = m_BufferHandle->cursor / m_BufferHandle->bytes_per_sample;
 
 		DWORD play_cur, write_cur;
 		if (sound_buffer->GetCurrentPosition(&play_cur, &write_cur) < 0) {
@@ -215,31 +252,22 @@ namespace Audio
 		DWORD size1, size2;
 
 		sound_buffer->Lock(byte_to_lock, size, &audiobuf1, &size1, &audiobuf2, &size2, 0);
-		uint8_t* filebuf = m_BufferHandle->file_payload.data.get();
 		if (size1 != 0 || size2 != 0) {
 			uint8_t* casted_buf1 = static_cast<uint8_t*>(audiobuf1);
 			uint8_t* casted_buf2 = static_cast<uint8_t*>(audiobuf2);
 
-			uint32_t getpoint = m_BufferHandle->cursor % m_BufferHandle->file_payload.size;
-			if (getpoint + size1 < m_BufferHandle->file_payload.size) {
-				std::memcpy(casted_buf1, filebuf + getpoint, size1);
+			uint32_t getpoint = m_BufferHandle->cursor % m_BufferHandle->file_payload.file_size;
+			auto& payload = m_BufferHandle->file_payload;
+			if (payload.swap_index >= g_MaxFilePortion) {
+				payload.swap_index = 0;
+				payload.swap_buffers();
 			}
-			else {
-				uint32_t half_copy_size = m_BufferHandle->file_payload.size - getpoint;
-				std::memcpy(casted_buf1, filebuf + getpoint, half_copy_size);
-				std::memcpy(casted_buf1 + half_copy_size, filebuf, size1 - half_copy_size);
-			}
+			payload.swap_index += size1 + size2;
 
+			std::memcpy(casted_buf1, payload.read_at(getpoint), size1);
 			if (size2 != 0) {
-				getpoint = (m_BufferHandle->cursor + size1) % m_BufferHandle->file_payload.size;
-				if (getpoint + size2 < m_BufferHandle->file_payload.size) {
-					std::memcpy(casted_buf2, filebuf + getpoint, size2);
-				}
-				else {
-					uint32_t half_copy_size = m_BufferHandle->file_payload.size - getpoint;
-					std::memcpy(casted_buf2, filebuf + getpoint, half_copy_size);
-					std::memcpy(casted_buf2 + half_copy_size, filebuf, size2 - half_copy_size);
-				}
+				getpoint = (m_BufferHandle->cursor + size1) % m_BufferHandle->file_payload.file_size;
+				std::memcpy(casted_buf2, payload.read_at(getpoint), size2);
 			}
 
 			m_BufferHandle->cursor += (size1 + size2);
@@ -272,6 +300,9 @@ namespace Audio
 		m_AsyncPlayRunning = true;
 		m_AsyncPlayThread = std::thread([this]() {
 			while (m_AsyncPlayRunning) {
+				//No need to do this in a while continuously, wait 10ms for each buffer iteration
+				using namespace std::chrono_literals;
+				std::this_thread::sleep_for(10ms);
 				switch (m_MixerMode) 
 				{
 				case MixerMode::RAW_WAVE_STREAM:
